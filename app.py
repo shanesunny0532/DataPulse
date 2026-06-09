@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import joblib
 
-st.set_page_config(page_title="Churn Predictor Pro", layout="wide")
-st.title("DataPulse: Advanced Churn Predictor 📊")
+st.set_page_config(page_title="Churn Predictor", layout="wide")
+st.title("DataPulse: Churn Predictor 📊")
 
 @st.cache_resource 
 def load_model():
