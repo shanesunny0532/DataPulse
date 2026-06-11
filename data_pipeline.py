@@ -41,16 +41,14 @@ def run_pipeline():
         df['Tenure in Months'] = np.maximum(1, df['Tenure in Months'])
 
     # ==========================================
-    # 3. CREATE MISSING BASE COLUMNS (THE FIX)
+    # 3. CREATE MISSING BASE COLUMNS
     # ==========================================
     print("🏗️ Building missing base columns for engineering...")
     
-    # Safety Net 1: Generate Interaction Frequency if missing
     if 'Interaction Frequency (Annual)' not in df.columns:
         np.random.seed(42) 
         df['Interaction Frequency (Annual)'] = np.random.randint(0, 25, size=len(df))
         
-    # Safety Net 2: Fix for the KeyError! Create a safe Churn Value if missing
     if 'Churn Value' not in df.columns:
         df['Churn Value'] = 0
 
@@ -131,14 +129,16 @@ def run_pipeline():
         ]
         choices_seg = ['VIP', 'At risk Premium', 'Regrettable churn', 'Upsell opportunity']
         df['Customer Value Segment'] = np.select(conditions_seg, choices_seg, default='Other')
-        df['High Value Customer'] = np.where(df['Customer Value Segment'].isin(['VIP', 'At risk Premium']), 1, 0)
 
     # ==========================================
-    # 5. SAVE LOCALLY
+    # 5. FINAL CLEANUP & SAVE LOCALLY
     # ==========================================
+    # Delete any phantom 'Unnamed' columns created by empty Google Sheets spaces
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    
     output_filename = 'Model_Ready_Data.csv'
     df.to_csv(output_filename, index=False)
-    print(f"✅ Data enriched with {len(df.columns)} columns. Preparing to upload...")
+    print(f"✅ Data enriched and cleaned to {len(df.columns)} columns. Preparing to upload...")
 
     # ==========================================
     # 6. OVERWRITE PLACEHOLDER IN GOOGLE DRIVE
