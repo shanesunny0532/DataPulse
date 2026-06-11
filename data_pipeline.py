@@ -133,7 +133,7 @@ def run_pipeline():
     df.to_csv(output_filename, index=False)
     print(f"✅ Data enriched with {len(df.columns)} columns. Preparing to upload...")
 
-    # ==========================================
+   # ==========================================
     # 5. OVERWRITE PLACEHOLDER IN GOOGLE DRIVE
     # ==========================================
     # Replace with the exact ID of your placeholder file in Google Drive
@@ -154,8 +154,9 @@ def run_pipeline():
         updated_file = service.files().update(
             fileId=TARGET_FILE_ID, 
             media_body=media
-        ).exucte()    
-     except Exception as e:
+        ).execute()
+            
+    except Exception as e:
         print(f"❌ Failed to upload to Google Drive: {e}")
 
 if __name__ == '__main__':
