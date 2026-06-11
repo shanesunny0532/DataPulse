@@ -154,7 +154,7 @@ def run_pipeline():
         updated_file = service.files().update(
             fileId=TARGET_FILE_ID, 
             media_body=media
-            
+        ).exucte()    
     except Exception as e:
         print(f"❌ Failed to upload to Google Drive: {e}")
 
