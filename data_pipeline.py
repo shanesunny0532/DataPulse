@@ -148,19 +148,8 @@ def run_pipeline():
         credentials = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=['https://www.googleapis.com/auth/drive']
         )
-        
-        service = build('drive', 'v3', credentials=credentials)
-        media = MediaFileUpload(output_filename, mimetype='text/csv', resumable=True)
-
-        updated_file = service.files().update(
-            fileId=TARGET_FILE_ID, 
-            media_body=media
-        ).execute()
-        
-        print(f"✅ SUCCESS! Overwritten the placeholder file in Google Drive. File ID: {updated_file.get('id')}")
-
     except Exception as e:
         print(f"❌ Failed to upload to Google Drive: {e}")
-
+        return
 if __name__ == '__main__':
     run_pipeline()
