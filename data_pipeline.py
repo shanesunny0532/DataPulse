@@ -155,7 +155,7 @@ def run_pipeline():
             fileId=TARGET_FILE_ID, 
             media_body=media
         ).exucte()    
-    except Exception as e:
+     except Exception as e:
         print(f"❌ Failed to upload to Google Drive: {e}")
 
 if __name__ == '__main__':
