@@ -13,7 +13,7 @@ def run_pipeline():
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
     # Replace with the ID of your RAW Data Google Sheet
-    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE'
+    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE'
     SHEET_NAME = 'Sheet1'
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
     
@@ -46,13 +46,11 @@ def run_pipeline():
     # ==========================================
     print("⚙️ Engineering advanced features and segments...")
 
-    # A. INTERACTION METRICS
     if 'Interaction Frequency (Annual)' in df.columns:
         df['Interaction Velocity (Per Month)'] = df['Interaction Frequency (Annual)'] / 12.0
         df['Interaction Velocity'] = df['Interaction Frequency (Annual)'] / df['Tenure in Months']
         df['Estimated Lifetime Interactions'] = df['Interaction Velocity (Per Month)'] * df['Tenure in Months']
     
-    # B. REVENUE & COST METRICS
     if 'Total Revenue' in df.columns and 'Estimated Lifetime Interactions' in df.columns:
         df['Avg Revenue Per Month'] = df['Total Revenue'] / df['Tenure in Months']
         df['Revenue-to-Interaction Ratio'] = df['Total Revenue'] / np.maximum(1, df['Estimated Lifetime Interactions'])
@@ -65,7 +63,6 @@ def run_pipeline():
     if 'Total Long Distance Charges' in df.columns:
         df['Avg Monthly Long Distance Charges'] = df['Total Long Distance Charges'] / df['Tenure in Months']
 
-    # C. CUSTOMER STATUS & TENURE GROUPS
     if 'Churn Value' in df.columns:
         conditions = [
             (df['Tenure in Months'] <= 1),
@@ -79,7 +76,6 @@ def run_pipeline():
     labels = ['Months 0-6', 'Months 7-12', 'Months 13-24', 'Months 25-48', 'Months 49-72', 'Months 73+']
     df['Tenure Group'] = pd.cut(df['Tenure in Months'], bins=bins, labels=labels, right=True)
 
-    # D. SERVICE BUNDLES & ENGAGEMENT
     service_cols = ['Phone Service', 'Multiple Lines', 'Internet Service', 'Online Security', 
                     'Online Backup', 'Device Protection Plan', 'Premium Tech Support', 
                     'Streaming TV', 'Streaming Movies', 'Streaming Music']
@@ -94,7 +90,6 @@ def run_pipeline():
         df['Engagement Score'] = (service_score * 0.6) + (df['Tenure in Months'] / 72 * 0.4)
         df['Engagement Score'] = df['Engagement Score'].round(3)
 
-    # E. RISK FLAGS & SCORES
     if 'Contract' in df.columns:
         df['Contract Risk Flag'] = np.where((df['Contract'] == 'Month-to-Month') & (df['Tenure in Months'] <= 12), 1, 0)
 
@@ -114,7 +109,6 @@ def run_pipeline():
     if 'Churn Risk Score' in df.columns and 'Profitability Score' in df.columns:
         df['Retention Priority Score'] = (df['Churn Risk Score'] * 0.6) + (df['Profitability Score'] * 0.4)
 
-    # F. CUSTOMER VALUE SEGMENTATION
     if 'Net Customer Profitability' in df.columns and 'Churn Risk Score' in df.columns:
         conditions_seg = [
             (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.8)) & (df['Churn Risk Score'] < 40),
@@ -133,10 +127,9 @@ def run_pipeline():
     df.to_csv(output_filename, index=False)
     print(f"✅ Data enriched with {len(df.columns)} columns. Preparing to upload...")
 
-   # ==========================================
+    # ==========================================
     # 5. OVERWRITE PLACEHOLDER IN GOOGLE DRIVE
     # ==========================================
-    # Replace with the exact ID of your placeholder file in Google Drive
     TARGET_FILE_ID = '1m7RHqafoVen_AKSXSKm69lituXBGj2XcD96gR-w63-E'
 
     try:
@@ -155,6 +148,8 @@ def run_pipeline():
             fileId=TARGET_FILE_ID, 
             media_body=media
         ).execute()
+        
+        print(f"✅ SUCCESS! Overwritten placeholder in Drive. ID: {updated_file.get('id')}")
             
     except Exception as e:
         print(f"❌ Failed to upload to Google Drive: {e}")
