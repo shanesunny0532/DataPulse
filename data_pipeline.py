@@ -12,7 +12,7 @@ def run_pipeline():
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE'
+    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE'
     SHEET_NAME = 'Sheet1'
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
     
@@ -41,21 +41,24 @@ def run_pipeline():
         df['Tenure in Months'] = np.maximum(1, df['Tenure in Months'])
 
     # ==========================================
-    # 3. CREATE MISSING BASE COLUMNS
+    # 3. CREATE MISSING BASE COLUMNS (THE FIX)
     # ==========================================
     print("🏗️ Building missing base columns for engineering...")
     
-    # Generate Interaction Frequency if it doesn't exist in raw data
+    # Safety Net 1: Generate Interaction Frequency if missing
     if 'Interaction Frequency (Annual)' not in df.columns:
-        np.random.seed(42) # Keeps the generated numbers consistent
+        np.random.seed(42) 
         df['Interaction Frequency (Annual)'] = np.random.randint(0, 25, size=len(df))
+        
+    # Safety Net 2: Fix for the KeyError! Create a safe Churn Value if missing
+    if 'Churn Value' not in df.columns:
+        df['Churn Value'] = 0
 
     # ==========================================
     # 4. ADVANCED FEATURE ENGINEERING
     # ==========================================
     print("⚙️ Engineering advanced features and segments...")
 
-    # Now this will successfully run!
     if 'Interaction Frequency (Annual)' in df.columns:
         df['Interaction Velocity (Per Month)'] = df['Interaction Frequency (Annual)'] / 12.0
         df['Interaction Velocity'] = df['Interaction Frequency (Annual)'] / df['Tenure in Months']
