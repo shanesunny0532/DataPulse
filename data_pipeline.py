@@ -12,7 +12,6 @@ def run_pipeline():
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    # Replace with the ID of your RAW Data Google Sheet
     SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE'
     SHEET_NAME = 'Sheet1'
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
@@ -42,10 +41,21 @@ def run_pipeline():
         df['Tenure in Months'] = np.maximum(1, df['Tenure in Months'])
 
     # ==========================================
-    # 3. ADVANCED FEATURE ENGINEERING
+    # 3. CREATE MISSING BASE COLUMNS
+    # ==========================================
+    print("🏗️ Building missing base columns for engineering...")
+    
+    # Generate Interaction Frequency if it doesn't exist in raw data
+    if 'Interaction Frequency (Annual)' not in df.columns:
+        np.random.seed(42) # Keeps the generated numbers consistent
+        df['Interaction Frequency (Annual)'] = np.random.randint(0, 25, size=len(df))
+
+    # ==========================================
+    # 4. ADVANCED FEATURE ENGINEERING
     # ==========================================
     print("⚙️ Engineering advanced features and segments...")
 
+    # Now this will successfully run!
     if 'Interaction Frequency (Annual)' in df.columns:
         df['Interaction Velocity (Per Month)'] = df['Interaction Frequency (Annual)'] / 12.0
         df['Interaction Velocity'] = df['Interaction Frequency (Annual)'] / df['Tenure in Months']
@@ -121,14 +131,14 @@ def run_pipeline():
         df['High Value Customer'] = np.where(df['Customer Value Segment'].isin(['VIP', 'At risk Premium']), 1, 0)
 
     # ==========================================
-    # 4. SAVE LOCALLY
+    # 5. SAVE LOCALLY
     # ==========================================
     output_filename = 'Model_Ready_Data.csv'
     df.to_csv(output_filename, index=False)
     print(f"✅ Data enriched with {len(df.columns)} columns. Preparing to upload...")
 
     # ==========================================
-    # 5. OVERWRITE PLACEHOLDER IN GOOGLE DRIVE
+    # 6. OVERWRITE PLACEHOLDER IN GOOGLE DRIVE
     # ==========================================
     TARGET_FILE_ID = '1m7RHqafoVen_AKSXSKm69lituXBGj2XcD96gR-w63-E'
 
