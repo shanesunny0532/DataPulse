@@ -13,12 +13,17 @@ def run_pipeline():
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
     SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE'
-    SHEET_NAME = 'Sheet1'
-    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
+    
+    # 🚨 FIX: Switched to the robust Direct Export URL (ignores tab names)
+    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv'
     
     try:
         df = pd.read_csv(url)
         print(f"✅ Successfully downloaded {len(df)} rows.")
+        
+        # 🚨 THE TRUTH EXPOSER: Let's see exactly what Python is downloading
+        print(f"🕵️ DEBUG COLUMNS: {list(df.columns)}")
+        
     except Exception as e:
         print(f"❌ Failed to download raw data: {e}")
         return
