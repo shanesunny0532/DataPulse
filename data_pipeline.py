@@ -41,6 +41,12 @@ def run_pipeline():
         df['Tenure in Months'] = pd.to_numeric(df['Tenure in Months'], errors='coerce').fillna(1)
         df['Tenure in Months'] = np.maximum(1, df['Tenure in Months'])
 
+    # 🚨 THE FIX: Force Churn Value to be a strict math integer
+    if 'Churn Value' in df.columns:
+        # If it says 'Yes', make it 1. Otherwise, force it to be a number.
+        df['Churn Value'] = df['Churn Value'].replace({'Yes': 1, 'yes': 1, 'No': 0, 'no': 0})
+        df['Churn Value'] = pd.to_numeric(df['Churn Value'], errors='coerce').fillna(0)
+
     # ==========================================
     # 3. CREATE MISSING BASE COLUMNS
     # ==========================================
@@ -137,6 +143,9 @@ def run_pipeline():
         ]
         choices_seg = ['Regrettable churn', 'VIP', 'At risk Premium', 'Upsell opportunity']
         df['Customer Value Segment'] = np.select(conditions_seg, choices_seg, default='Other')
+        
+    regrettable_count = len(df[df['Customer Value Segment'] == 'Regrettable churn'])
+    print(f"📊 DEBUG: Found {regrettable_count} Regrettable Churn customers!")
 
     # ==========================================
     # 5. FINAL CLEANUP & SAVE LOCALLY
