@@ -136,25 +136,25 @@ def run_pipeline():
         df['Retention Priority Score'] = (df['Churn Risk Score'] * 0.6) + (df['Profitability Score'] * 0.4)
 
    # ==========================================
-    # CUSTOMER VALUE SEGMENTATION (COLAB MATCH)
+    # CUSTOMER VALUE SEGMENTATION
     # ==========================================
-    if 'Net Customer Profitability' in df.columns and 'Churn Value' in df.columns:
+    if 'Net Customer Profitability' in df.columns and 'Churn Risk Score' in df.columns:
         
-        # Using the exact 4-quadrant logic from your Google Colab script
+        # Widen the net: Look at the top 50% of profitable customers
+        prof_threshold = df['Net Customer Profitability'].quantile(0.50)
+        
         conditions_seg = [
-            (df['Churn Value'] == 1) & (df['Net Customer Profitability'] < 0),
-            (df['Churn Value'] == 1) & (df['Net Customer Profitability'] >= 0),
-            (df['Churn Value'] == 0) & (df['Net Customer Profitability'] < 0),
-            (df['Churn Value'] == 0) & (df['Net Customer Profitability'] >= 0)
+            (df['Net Customer Profitability'] > prof_threshold) & (df['Churn Value'] == 1),
+            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.8)) & (df['Churn Risk Score'] < 40) & (df['Churn Value'] == 0),
+            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.7)) & (df['Churn Risk Score'] >= 60) & (df['Churn Value'] == 0),
+            (df['Service Bundle Count'] <= 2) & (df['Tenure in Months'] > 12) & (df['Churn Risk Score'] < 50) & (df['Churn Value'] == 0)
         ]
-        
-        # Using your exact segment names
-        choices_seg = ['Profitable Churn', 'Regrettable Churn', 'Unprofitable Active', 'Profitable Active']
-        df['Customer Value Segment'] = np.select(conditions_seg, choices_seg, default='Unknown')
+        choices_seg = ['Regrettable churn', 'VIP', 'At risk Premium', 'Upsell opportunity']
+        df['Customer Value Segment'] = np.select(conditions_seg, choices_seg, default='Other')
 
     # Double Debug Tracker
     total_churners = df['Churn Value'].sum()
-    regrettable_count = len(df[df['Customer Value Segment'] == 'Regrettable Churn'])
+    regrettable_count = len(df[df['Customer Value Segment'] == 'Regrettable churn'])
     print(f"📊 DEBUG: Total people who churned in raw data: {total_churners}")
     print(f"📊 DEBUG: Found {regrettable_count} Regrettable Churn customers!")
 
