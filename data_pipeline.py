@@ -46,7 +46,7 @@ def run_pipeline():
         df['Tenure in Months'] = np.maximum(1, df['Tenure in Months'])
 
     # ==========================================
-    # 3. CREATE MISSING BASE COLUMNS (THE KEYWORD FIX)
+    # 3. CREATE MISSING BASE COLUMNS
     # ==========================================
     print("🏗️ Building missing base columns for engineering...")
     
@@ -54,17 +54,16 @@ def run_pipeline():
         np.random.seed(42) 
         df['Interaction Frequency (Annual)'] = np.random.randint(0, 25, size=len(df))
         
-    # 🚨 Find the correct Churn column securely
-    churn_candidates = [col for col in df.columns if 'churn' in str(col).lower() and 'score' not in str(col).lower() and 'reason' not in str(col).lower() and 'category' not in str(col).lower()]
-    
-    if churn_candidates:
-        target_col = churn_candidates[0]
-        # Force the column to string, strip spaces, make lowercase
-        raw_churn = df[target_col].astype(str).str.strip().str.lower()
+    # 🚨 THE FINAL FIX: Derive Churn Value from Customer Status
+    if 'Customer Status' in df.columns:
+        # Look for the word 'churned' in the Customer Status column
+        clean_status = df['Customer Status'].astype(str).str.strip().str.lower()
+        df['Churn Value'] = np.where(clean_status == 'churned', 1, 0)
         
-        # 🚨 Keyword Scanner: If it matches ANY of these, it becomes a 1
-        positive_churn_keywords = ['1', '1.0', 'yes', 'true', 'churned', 'left', 'y']
-        df['Churn Value'] = np.where(raw_churn.isin(positive_churn_keywords), 1, 0)
+    elif 'Churn Category' in df.columns:
+        # Backup plan: If they have a churn category, they churned
+        df['Churn Value'] = np.where(df['Churn Category'].notna() & (df['Churn Category'].astype(str).str.strip() != ''), 1, 0)
+        
     else:
         df['Churn Value'] = 0
 
