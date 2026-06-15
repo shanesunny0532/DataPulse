@@ -12,8 +12,7 @@ def run_pipeline():
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    # Don't forget to paste your RAW Sheet ID here!
-    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE'
+    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE'
     SHEET_NAME = 'Sheet1'
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
     
@@ -41,14 +40,8 @@ def run_pipeline():
         df['Tenure in Months'] = pd.to_numeric(df['Tenure in Months'], errors='coerce').fillna(1)
         df['Tenure in Months'] = np.maximum(1, df['Tenure in Months'])
 
-    # 🚨 THE FIX: Force Churn Value to be a strict math integer
-    if 'Churn Value' in df.columns:
-        # If it says 'Yes', make it 1. Otherwise, force it to be a number.
-        df['Churn Value'] = df['Churn Value'].replace({'Yes': 1, 'yes': 1, 'No': 0, 'no': 0})
-        df['Churn Value'] = pd.to_numeric(df['Churn Value'], errors='coerce').fillna(0)
-
     # ==========================================
-    # 3. CREATE MISSING BASE COLUMNS
+    # 3. CREATE MISSING BASE COLUMNS (THE REAL FIX)
     # ==========================================
     print("🏗️ Building missing base columns for engineering...")
     
@@ -56,16 +49,17 @@ def run_pipeline():
         np.random.seed(42) 
         df['Interaction Frequency (Annual)'] = np.random.randint(0, 25, size=len(df))
         
-    # Smarter Churn Detection: Find ANY column related to churn
-    churn_cols = [col for col in df.columns if 'churn' in col.lower() and 'score' not in col.lower()]
-    
-    if churn_cols:
-        target_churn = churn_cols[0] # Grab the first match
-        df['Churn Value'] = df[target_churn].astype(str).str.strip().str.lower()
-        # Map any variation of 'Yes' or '1' to a strict integer
-        df['Churn Value'] = df['Churn Value'].map({'yes': 1, 'true': 1, '1': 1, '1.0': 1}).fillna(0)
+    # Explicitly target ONLY the correct Churn columns
+    if 'Churn Value' in df.columns:
+        df['Churn Value'] = df['Churn Value'].replace({'Yes': 1, 'yes': 1, 'No': 0, 'no': 0})
+    elif 'Churn Label' in df.columns:
+        df['Churn Value'] = df['Churn Label'].replace({'Yes': 1, 'yes': 1, 'No': 0, 'no': 0})
+    elif 'Churn' in df.columns:
+        df['Churn Value'] = df['Churn'].replace({'Yes': 1, 'yes': 1, 'No': 0, 'no': 0})
     else:
         df['Churn Value'] = 0
+        
+    df['Churn Value'] = pd.to_numeric(df['Churn Value'], errors='coerce').fillna(0)
 
     # ==========================================
     # 4. ADVANCED FEATURE ENGINEERING
@@ -135,25 +129,34 @@ def run_pipeline():
     if 'Churn Risk Score' in df.columns and 'Profitability Score' in df.columns:
         df['Retention Priority Score'] = (df['Churn Risk Score'] * 0.6) + (df['Profitability Score'] * 0.4)
 
-   # ==========================================
-    # CUSTOMER VALUE SEGMENTATION
+    # ==========================================
+    # CUSTOMER VALUE SEGMENTATION (THE ORIGINAL 5)
     # ==========================================
     if 'Net Customer Profitability' in df.columns and 'Churn Risk Score' in df.columns:
         
-        # Widen the net: Look at the top 50% of profitable customers
-        prof_threshold = df['Net Customer Profitability'].quantile(0.50)
+        prof_top_50 = df['Net Customer Profitability'].quantile(0.50)
+        prof_top_70 = df['Net Customer Profitability'].quantile(0.70)
+        prof_top_80 = df['Net Customer Profitability'].quantile(0.80)
         
         conditions_seg = [
-            (df['Net Customer Profitability'] > prof_threshold) & (df['Churn Value'] == 1),
-            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.8)) & (df['Churn Risk Score'] < 40) & (df['Churn Value'] == 0),
-            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.7)) & (df['Churn Risk Score'] >= 60) & (df['Churn Value'] == 0),
-            (df['Service Bundle Count'] <= 2) & (df['Tenure in Months'] > 12) & (df['Churn Risk Score'] < 50) & (df['Churn Value'] == 0)
+            # 1. Regrettable Churn: They churned AND were in the top 50% of profit
+            (df['Churn Value'] == 1) & (df['Net Customer Profitability'] > prof_top_50),
+            
+            # 2. VIP: Active, Top 20% Profit, Low Risk
+            (df['Churn Value'] == 0) & (df['Net Customer Profitability'] > prof_top_80) & (df['Churn Risk Score'] < 40),
+            
+            # 3. At risk Premium: Active, Top 30% Profit, High Risk
+            (df['Churn Value'] == 0) & (df['Net Customer Profitability'] > prof_top_70) & (df['Churn Risk Score'] >= 60),
+            
+            # 4. Upsell opportunity: Active, low services, high tenure, low risk
+            (df['Churn Value'] == 0) & (df['Service Bundle Count'] <= 2) & (df['Tenure in Months'] > 12) & (df['Churn Risk Score'] < 50)
         ]
+        
         choices_seg = ['Regrettable churn', 'VIP', 'At risk Premium', 'Upsell opportunity']
         df['Customer Value Segment'] = np.select(conditions_seg, choices_seg, default='Other')
 
     # Double Debug Tracker
-    total_churners = df['Churn Value'].sum()
+    total_churners = int(df['Churn Value'].sum())
     regrettable_count = len(df[df['Customer Value Segment'] == 'Regrettable churn'])
     print(f"📊 DEBUG: Total people who churned in raw data: {total_churners}")
     print(f"📊 DEBUG: Found {regrettable_count} Regrettable Churn customers!")
@@ -161,7 +164,6 @@ def run_pipeline():
     # ==========================================
     # 5. FINAL CLEANUP & SAVE LOCALLY
     # ==========================================
-    # Delete any phantom 'Unnamed' columns created by empty Google Sheets spaces
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     
     output_filename = 'Model_Ready_Data.csv'
