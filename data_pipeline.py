@@ -41,7 +41,7 @@ def run_pipeline():
         df['Tenure in Months'] = np.maximum(1, df['Tenure in Months'])
 
     # ==========================================
-    # 3. CREATE MISSING BASE COLUMNS (THE REAL FIX)
+    # 3. CREATE MISSING BASE COLUMNS (THE BULLDOZER FIX)
     # ==========================================
     print("🏗️ Building missing base columns for engineering...")
     
@@ -49,17 +49,22 @@ def run_pipeline():
         np.random.seed(42) 
         df['Interaction Frequency (Annual)'] = np.random.randint(0, 25, size=len(df))
         
-    # Explicitly target ONLY the correct Churn columns
+    # 🚨 Find the correct Churn column no matter what it's named
+    target_churn_col = None
     if 'Churn Value' in df.columns:
-        df['Churn Value'] = df['Churn Value'].replace({'Yes': 1, 'yes': 1, 'No': 0, 'no': 0})
+        target_churn_col = 'Churn Value'
     elif 'Churn Label' in df.columns:
-        df['Churn Value'] = df['Churn Label'].replace({'Yes': 1, 'yes': 1, 'No': 0, 'no': 0})
+        target_churn_col = 'Churn Label'
     elif 'Churn' in df.columns:
-        df['Churn Value'] = df['Churn'].replace({'Yes': 1, 'yes': 1, 'No': 0, 'no': 0})
+        target_churn_col = 'Churn'
+
+    # 🚨 Strip invisible spaces, lower-case it, and map directly
+    if target_churn_col:
+        clean_churn = df[target_churn_col].astype(str).str.strip().str.lower()
+        # Anything that means 'Yes' becomes 1. Everything else becomes 0.
+        df['Churn Value'] = clean_churn.map({'yes': 1, '1': 1, '1.0': 1, 'true': 1}).fillna(0)
     else:
         df['Churn Value'] = 0
-        
-    df['Churn Value'] = pd.to_numeric(df['Churn Value'], errors='coerce').fillna(0)
 
     # ==========================================
     # 4. ADVANCED FEATURE ENGINEERING
