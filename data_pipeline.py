@@ -56,7 +56,15 @@ def run_pipeline():
         np.random.seed(42) 
         df['Interaction Frequency (Annual)'] = np.random.randint(0, 25, size=len(df))
         
-    if 'Churn Value' not in df.columns:
+    # Smarter Churn Detection: Find ANY column related to churn
+    churn_cols = [col for col in df.columns if 'churn' in col.lower() and 'score' not in col.lower()]
+    
+    if churn_cols:
+        target_churn = churn_cols[0] # Grab the first match
+        df['Churn Value'] = df[target_churn].astype(str).str.strip().str.lower()
+        # Map any variation of 'Yes' or '1' to a strict integer
+        df['Churn Value'] = df['Churn Value'].map({'yes': 1, 'true': 1, '1': 1, '1.0': 1}).fillna(0)
+    else:
         df['Churn Value'] = 0
 
     # ==========================================
@@ -127,24 +135,27 @@ def run_pipeline():
     if 'Churn Risk Score' in df.columns and 'Profitability Score' in df.columns:
         df['Retention Priority Score'] = (df['Churn Risk Score'] * 0.6) + (df['Profitability Score'] * 0.4)
 
+   # ==========================================
+    # CUSTOMER VALUE SEGMENTATION (COLAB MATCH)
     # ==========================================
-    # FIXED: Segments prioritize actual Churn first!
-    # ==========================================
-    if 'Net Customer Profitability' in df.columns and 'Churn Risk Score' in df.columns:
-        conditions_seg = [
-            # 1. First priority: Check if they are highly profitable but actually left
-            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.8)) & (df['Churn Value'] == 1),
-            # 2. Second priority: Highly profitable, still active, low risk
-            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.8)) & (df['Churn Risk Score'] < 40) & (df['Churn Value'] == 0),
-            # 3. Third priority: Highly profitable, still active, high risk
-            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.7)) & (df['Churn Risk Score'] >= 60) & (df['Churn Value'] == 0),
-            # 4. Fourth priority: Low services, still active, high tenure
-            (df['Service Bundle Count'] <= 2) & (df['Tenure in Months'] > 12) & (df['Churn Risk Score'] < 50) & (df['Churn Value'] == 0)
-        ]
-        choices_seg = ['Regrettable churn', 'VIP', 'At risk Premium', 'Upsell opportunity']
-        df['Customer Value Segment'] = np.select(conditions_seg, choices_seg, default='Other')
+    if 'Net Customer Profitability' in df.columns and 'Churn Value' in df.columns:
         
-    regrettable_count = len(df[df['Customer Value Segment'] == 'Regrettable churn'])
+        # Using the exact 4-quadrant logic from your Google Colab script
+        conditions_seg = [
+            (df['Churn Value'] == 1) & (df['Net Customer Profitability'] < 0),
+            (df['Churn Value'] == 1) & (df['Net Customer Profitability'] >= 0),
+            (df['Churn Value'] == 0) & (df['Net Customer Profitability'] < 0),
+            (df['Churn Value'] == 0) & (df['Net Customer Profitability'] >= 0)
+        ]
+        
+        # Using your exact segment names
+        choices_seg = ['Profitable Churn', 'Regrettable Churn', 'Unprofitable Active', 'Profitable Active']
+        df['Customer Value Segment'] = np.select(conditions_seg, choices_seg, default='Unknown')
+
+    # Double Debug Tracker
+    total_churners = df['Churn Value'].sum()
+    regrettable_count = len(df[df['Customer Value Segment'] == 'Regrettable Churn'])
+    print(f"📊 DEBUG: Total people who churned in raw data: {total_churners}")
     print(f"📊 DEBUG: Found {regrettable_count} Regrettable Churn customers!")
 
     # ==========================================
