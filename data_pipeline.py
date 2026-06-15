@@ -12,7 +12,8 @@ def run_pipeline():
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE'
+    # Don't forget to paste your RAW Sheet ID here!
+    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE'
     SHEET_NAME = 'Sheet1'
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
     
@@ -120,14 +121,21 @@ def run_pipeline():
     if 'Churn Risk Score' in df.columns and 'Profitability Score' in df.columns:
         df['Retention Priority Score'] = (df['Churn Risk Score'] * 0.6) + (df['Profitability Score'] * 0.4)
 
+    # ==========================================
+    # FIXED: Segments prioritize actual Churn first!
+    # ==========================================
     if 'Net Customer Profitability' in df.columns and 'Churn Risk Score' in df.columns:
         conditions_seg = [
-            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.8)) & (df['Churn Risk Score'] < 40),
-            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.7)) & (df['Churn Risk Score'] >= 60),
+            # 1. First priority: Check if they are highly profitable but actually left
             (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.8)) & (df['Churn Value'] == 1),
-            (df['Service Bundle Count'] <= 2) & (df['Tenure in Months'] > 12) & (df['Churn Risk Score'] < 50)
+            # 2. Second priority: Highly profitable, still active, low risk
+            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.8)) & (df['Churn Risk Score'] < 40) & (df['Churn Value'] == 0),
+            # 3. Third priority: Highly profitable, still active, high risk
+            (df['Net Customer Profitability'] > df['Net Customer Profitability'].quantile(0.7)) & (df['Churn Risk Score'] >= 60) & (df['Churn Value'] == 0),
+            # 4. Fourth priority: Low services, still active, high tenure
+            (df['Service Bundle Count'] <= 2) & (df['Tenure in Months'] > 12) & (df['Churn Risk Score'] < 50) & (df['Churn Value'] == 0)
         ]
-        choices_seg = ['VIP', 'At risk Premium', 'Regrettable churn', 'Upsell opportunity']
+        choices_seg = ['Regrettable churn', 'VIP', 'At risk Premium', 'Upsell opportunity']
         df['Customer Value Segment'] = np.select(conditions_seg, choices_seg, default='Other')
 
     # ==========================================
