@@ -13,7 +13,7 @@ def run_pipeline():
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
     # Don't forget to paste your RAW Sheet ID here!
-    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE'
+    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE'
     SHEET_NAME = 'Sheet1'
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
     
