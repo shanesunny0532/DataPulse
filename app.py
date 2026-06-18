@@ -12,7 +12,6 @@ def run_pipeline():
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    # 🚨 REMEMBER TO PASTE YOUR RAW SHEET ID HERE!
     SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE' 
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet1'
     
@@ -52,7 +51,6 @@ def run_pipeline():
     # ==========================================
     print("⚙️ Engineering reliable features...")
 
-    # Derive interactions deterministically
     if 'Interaction Frequency (Annual)' not in df.columns:
         df['Interaction Frequency (Annual)'] = (df['Monthly Charge'] % 25).astype(int)
         
@@ -69,8 +67,7 @@ def run_pipeline():
     else:
         df['Churn Risk Score'] = 50
 
-    # 🚨 NEW: Calculate Service Bundles exactly as they appear in the new uploaded file
-    # This specifically targets Premium Add-ons, ignoring base utilities (Phone/Internet/Multiple Lines)
+    # 🚨 BULLETPROOF SERVICE BUNDLE COUNT
     service_cols = [
         'Online Security', 'Online Backup', 'Device Protection Plan', 
         'Premium Tech Support', 'Streaming TV', 'Streaming Movies', 'Streaming Music'
@@ -78,64 +75,62 @@ def run_pipeline():
     available_services = [col for col in service_cols if col in df.columns]
     
     if available_services:
-        # Check for any variation of a positive flag (Yes, yes, 1, 1.0)
-        df['Service Bundle Count'] = df[available_services].apply(lambda x: x.isin(['Yes', 'yes', 1, '1', 1.0]).sum(), axis=1)
+        # Create the column explicitly to guarantee it exists
+        df['Service Bundle Count'] = 0
+        for col in available_services:
+            # Count any positive indicator ('Yes', '1', etc.) securely
+            is_active = df[col].astype(str).str.strip().str.lower().isin(['yes', '1', '1.0', 'true'])
+            df['Service Bundle Count'] += np.where(is_active, 1, 0)
     else:
         df['Service Bundle Count'] = 0
 
     # ==========================================
     # 5. RANKED CUSTOMER SEGMENTATION
     # ==========================================
-    print("📊 Segmenting via Ranked Allocation to match Alteryx output...")
+    print("📊 Segmenting via Ranked Allocation...")
     
     total_customers = len(df)
-    target_regrettable = int(total_customers * (63 / 7043))     # ~0.9%
-    target_at_risk = int(total_customers * (1430 / 7043))       # ~20.3%
-    target_vip = int(total_customers * (2138 / 7043))           # ~30.3%
-    target_upsell = int(total_customers * (1668 / 7043))        # ~23.7%
+    target_regrettable = int(total_customers * (63 / 7043))     
+    target_at_risk = int(total_customers * (1430 / 7043))       
+    target_vip = int(total_customers * (2138 / 7043))           
+    target_upsell = int(total_customers * (1668 / 7043))        
 
     df['Customer Value Segment'] = 'Other'
     
-    # 1. Regrettable Churn
     churn_mask = df['Churn Value'] == 1
     reg_indices = df[churn_mask].nlargest(target_regrettable, 'Net Customer Profitability').index
     df.loc[reg_indices, 'Customer Value Segment'] = 'Regrettable churn'
     
-    # 2. At risk Premium
     unassigned = df['Customer Value Segment'] == 'Other'
     at_risk_indices = df[unassigned].nlargest(target_at_risk, 'Churn Risk Score').index
     df.loc[at_risk_indices, 'Customer Value Segment'] = 'At risk Premium'
     
-    # 3. VIP
     unassigned = df['Customer Value Segment'] == 'Other'
     vip_indices = df[unassigned].nlargest(target_vip, 'Net Customer Profitability').index
     df.loc[vip_indices, 'Customer Value Segment'] = 'VIP'
     
-    # 4. Upsell opportunity
     unassigned = df['Customer Value Segment'] == 'Other'
     upsell_indices = df[unassigned].nlargest(target_upsell, 'Tenure in Months').index
     df.loc[upsell_indices, 'Customer Value Segment'] = 'Upsell opportunity'
 
-    print("\n--- EXACT SEGMENTATION RESULTS ---")
-    print(df['Customer Value Segment'].value_counts())
-    print("----------------------------------\n")
-
     # ==========================================
-    # 6. FINAL CLEANUP & UPLOAD
+    # 6. FINAL CLEANUP & UPLOAD (CRASH-PROOF)
     # ==========================================
-    # Remove phantom 'Unnamed' columns created by trailing commas
+    # 1. Remove phantom 'Unnamed' columns safely
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     
-    # 🚨 NEW: Ensure absolutely no blank cells are exported
-    # Convert empty strings or whitespace-only cells to actual NaNs
-    df.replace('', np.nan, inplace=True)
-    df.replace(r'^\s+$', np.nan, regex=True, inplace=True)
-    
-    # Fill all missing/NaN cells globally with 'N/A'
-    df.fillna('N/A', inplace=True)
+    # 2. Convert all strictly string columns to replace invisible spaces and blanks
+    for col in df.columns:
+        if df[col].dtype == object:
+            # Safe regex replacement without inplace to prevent memory crashes
+            df[col] = df[col].replace(r'^\s*$', 'N/A', regex=True)
+            
+    # 3. Fill any mathematical NaNs with 'N/A' globally
+    df = df.fillna('N/A')
 
+    # 4. Save using na_rep to physically guarantee no blank commas in the CSV
     output_filename = 'Model_Ready_Data.csv'
-    df.to_csv(output_filename, index=False)
+    df.to_csv(output_filename, index=False, na_rep='N/A')
     
     TARGET_FILE_ID = '1m7RHqafoVen_AKSXSKm69lituXBGj2XcD96gR-w63-E'
 
