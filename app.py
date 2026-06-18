@@ -12,7 +12,7 @@ def run_pipeline():
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE' 
+    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE' 
     # Switched back to direct export URL to prevent gviz HTML corruption
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv'
     
@@ -116,25 +116,25 @@ def run_pipeline():
     df.loc[upsell_indices, 'Customer Value Segment'] = 'Upsell opportunity'
 
     # ==========================================
-    # 6. FINAL CLEANUP & UPLOAD (THE NUKE OPTION)
+    # 6. FINAL CLEANUP & UPLOAD (THE SAFE NUKE OPTION)
     # ==========================================
-    print("🧹 Running strict blank-cell cleanup...")
+    # Moved the debug print up here so we can see it before anything else happens!
+    print(f"📊 DEBUG: First 3 rows of Service Bundle Count:\n{df['Service Bundle Count'].head(3)}")
+    
+    print("🧹 Running safe blank-cell cleanup...")
     
     # Remove phantom 'Unnamed' columns
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     
-    # 🚨 FIX 3: THE NUKE OPTION FOR BLANKS
-    # 1. Replace cells containing ONLY spaces with standard NaN
-    df = df.replace(r'^\s*$', np.nan, regex=True)
+    # 🚨 FIX 3: TARGETED BLANK CLEANUP (No more crashing!)
+    # We explicitly only run the regex on text/object columns to avoid fatal errors
+    string_cols = df.select_dtypes(include=['object']).columns
+    for col in string_cols:
+        df[col] = df[col].replace(r'^\s*$', np.nan, regex=True)
+        df[col] = df[col].replace(['nan', 'NaN', 'None', '<NA>'], np.nan)
     
-    # 2. Force fill standard NaNs with 'N/A'
+    # Force fill standard NaNs across the ENTIRE dataframe with 'N/A'
     df = df.fillna('N/A')
-    
-    # 3. Replace string artifacts ('nan', 'NaN', 'None') that Pandas leaves behind with 'N/A'
-    df = df.replace(['nan', 'NaN', 'None', '<NA>'], 'N/A')
-
-    # Double-check that the column made it to the final stage
-    print(f"📊 DEBUG: First 3 rows of Service Bundle Count:\n{df['Service Bundle Count'].head(3)}")
 
     output_filename = 'Model_Ready_Data.csv'
     df.to_csv(output_filename, index=False)
