@@ -8,12 +8,12 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 def run_pipeline():
-    print("🚀 Starting Bulletproof Data Pipeline...")
+    print("🚀 Starting Pipeline...")
 
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE' 
+    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE' 
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv'
     
     try:
@@ -107,25 +107,28 @@ def run_pipeline():
     df.loc[upsell_indices, 'Customer Value Segment'] = 'Upsell opportunity'
 
     # ==========================================
-    # 6. FINAL CLEANUP & UPLOAD
+    # 6. FINAL CLEANUP & UPLOAD (CRASH-PROOF)
     # ==========================================
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     
-    # Use "Unknown" instead of "N/A" so Google Sheets doesn't hide the text!
-    string_cols = df.select_dtypes(include=['object']).columns
-    for col in string_cols:
-        df[col] = df[col].replace(r'^\s*$', np.nan, regex=True)
-        df[col] = df[col].replace(['nan', 'NaN', 'None', '<NA>', 'N/A'], np.nan)
+    # Safe, non-regex text cleanup
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            # Force everything to string, strip spaces, and replace blanks
+            df[col] = df[col].astype(str).str.strip()
+            df[col] = df[col].replace(['', 'nan', 'NaN', 'None', '<NA>'], 'Unknown')
     
+    # Fill remaining numerical NaNs
     df = df.fillna('Unknown')
 
-    print(f"📊 DEBUG: Columns ready for export: {df.columns.tolist()}")
+    # Verification Step
+    if 'Service Bundle Count' in df.columns:
+        print(f"✅ VERIFIED: Service Bundle Count is ready to export. Sample: {df['Service Bundle Count'].tolist()[:5]}")
 
-    output_filename = 'Model_Ready_Data.csv'
+    # Create a BRAND NEW file to bypass Google Sheets caching
+    output_filename = 'Model_Ready_Data_FINAL.csv'
     df.to_csv(output_filename, index=False)
     
-    TARGET_FILE_ID = '1m7RHqafoVen_AKSXSKm69lituXBGj2XcD96gR-w63-E'
-
     try:
         creds_json = os.environ.get('GCP_CREDENTIALS')
         if not creds_json:
@@ -138,11 +141,17 @@ def run_pipeline():
         service = build('drive', 'v3', credentials=credentials)
         media = MediaFileUpload(output_filename, mimetype='text/csv', resumable=True)
 
-        updated_file = service.files().update(fileId=TARGET_FILE_ID, media_body=media).execute()
-        print(f"✅ SUCCESS! Uploaded to Drive. ID: {updated_file.get('id')}")
+        # Upload as a new file
+        file_metadata = {'name': 'Model_Ready_Data_FINAL.csv'}
+        new_file = service.files().create(
+            body=file_metadata, 
+            media_body=media,
+            fields='id'
+        ).execute()
+        
+        print(f"✅ SUCCESS! Created new file: Model_Ready_Data_FINAL.csv (ID: {new_file.get('id')})")
     except Exception as e:
         print(f"❌ Failed to upload to Google Drive: {e}")
-        # 🚨 THIS WILL FORCE GITHUB TO SHOW A RED ERROR IF IT FAILS!
         sys.exit(1) 
 
 if __name__ == '__main__':
