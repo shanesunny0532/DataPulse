@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 import json
+import sys
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -12,8 +13,7 @@ def run_pipeline():
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE' 
-    # Switched back to direct export URL to prevent gviz HTML corruption
+    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE' 
     url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv'
     
     try:
@@ -21,9 +21,8 @@ def run_pipeline():
         print(f"✅ Successfully downloaded {len(df)} rows.")
     except Exception as e:
         print(f"❌ Failed to download raw data: {e}")
-        return
+        sys.exit(1)
 
-    # 🚨 FIX 1: Strip invisible spaces from column headers so Python can actually find them!
     df.columns = df.columns.str.strip()
 
     # ==========================================
@@ -53,8 +52,6 @@ def run_pipeline():
     # ==========================================
     # 4. DETERMINISTIC FEATURE ENGINEERING
     # ==========================================
-    print("⚙️ Engineering reliable features...")
-
     if 'Interaction Frequency (Annual)' not in df.columns:
         df['Interaction Frequency (Annual)'] = (df['Monthly Charge'] % 25).astype(int)
         
@@ -71,26 +68,20 @@ def run_pipeline():
     else:
         df['Churn Risk Score'] = 50
 
-    # 🚨 FIX 2: FORCE SERVICE BUNDLE COUNT
-    # Create the column explicitly first so it cannot be skipped
+    # 🚨 FORCE SERVICE BUNDLE COUNT
     df['Service Bundle Count'] = 0
-    
     premium_services = [
         'Online Security', 'Online Backup', 'Device Protection Plan', 
         'Premium Tech Support', 'Streaming TV', 'Streaming Movies', 'Streaming Music'
     ]
-    
     for service in premium_services:
         if service in df.columns:
-            # Check for ANY positive indicator and add it to the count
             is_active = df[service].astype(str).str.strip().str.lower().isin(['yes', '1', '1.0', 'true'])
             df['Service Bundle Count'] += np.where(is_active, 1, 0)
 
     # ==========================================
     # 5. RANKED CUSTOMER SEGMENTATION
     # ==========================================
-    print("📊 Segmenting via Ranked Allocation...")
-    
     total_customers = len(df)
     target_regrettable = int(total_customers * (63 / 7043))     
     target_at_risk = int(total_customers * (1430 / 7043))       
@@ -116,25 +107,19 @@ def run_pipeline():
     df.loc[upsell_indices, 'Customer Value Segment'] = 'Upsell opportunity'
 
     # ==========================================
-    # 6. FINAL CLEANUP & UPLOAD (THE SAFE NUKE OPTION)
+    # 6. FINAL CLEANUP & UPLOAD
     # ==========================================
-    # Moved the debug print up here so we can see it before anything else happens!
-    print(f"📊 DEBUG: First 3 rows of Service Bundle Count:\n{df['Service Bundle Count'].head(3)}")
-    
-    print("🧹 Running safe blank-cell cleanup...")
-    
-    # Remove phantom 'Unnamed' columns
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     
-    # 🚨 FIX 3: TARGETED BLANK CLEANUP (No more crashing!)
-    # We explicitly only run the regex on text/object columns to avoid fatal errors
+    # Use "Unknown" instead of "N/A" so Google Sheets doesn't hide the text!
     string_cols = df.select_dtypes(include=['object']).columns
     for col in string_cols:
         df[col] = df[col].replace(r'^\s*$', np.nan, regex=True)
-        df[col] = df[col].replace(['nan', 'NaN', 'None', '<NA>'], np.nan)
+        df[col] = df[col].replace(['nan', 'NaN', 'None', '<NA>', 'N/A'], np.nan)
     
-    # Force fill standard NaNs across the ENTIRE dataframe with 'N/A'
-    df = df.fillna('N/A')
+    df = df.fillna('Unknown')
+
+    print(f"📊 DEBUG: Columns ready for export: {df.columns.tolist()}")
 
     output_filename = 'Model_Ready_Data.csv'
     df.to_csv(output_filename, index=False)
@@ -143,18 +128,22 @@ def run_pipeline():
 
     try:
         creds_json = os.environ.get('GCP_CREDENTIALS')
-        if creds_json:
-            creds_dict = json.loads(creds_json)
-            credentials = service_account.Credentials.from_service_account_info(
-                creds_dict, scopes=['https://www.googleapis.com/auth/drive']
-            )
-            service = build('drive', 'v3', credentials=credentials)
-            media = MediaFileUpload(output_filename, mimetype='text/csv', resumable=True)
+        if not creds_json:
+            raise ValueError("GCP_CREDENTIALS missing!")
+            
+        creds_dict = json.loads(creds_json)
+        credentials = service_account.Credentials.from_service_account_info(
+            creds_dict, scopes=['https://www.googleapis.com/auth/drive']
+        )
+        service = build('drive', 'v3', credentials=credentials)
+        media = MediaFileUpload(output_filename, mimetype='text/csv', resumable=True)
 
-            updated_file = service.files().update(fileId=TARGET_FILE_ID, media_body=media).execute()
-            print(f"✅ SUCCESS! Uploaded to Drive. ID: {updated_file.get('id')}")
+        updated_file = service.files().update(fileId=TARGET_FILE_ID, media_body=media).execute()
+        print(f"✅ SUCCESS! Uploaded to Drive. ID: {updated_file.get('id')}")
     except Exception as e:
         print(f"❌ Failed to upload to Google Drive: {e}")
+        # 🚨 THIS WILL FORCE GITHUB TO SHOW A RED ERROR IF IT FAILS!
+        sys.exit(1) 
 
 if __name__ == '__main__':
     run_pipeline()
