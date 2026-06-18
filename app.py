@@ -7,13 +7,14 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 def run_pipeline():
-    print("🚀 Starting Ranked Allocation Data Pipeline...")
+    print("🚀 Starting Bulletproof Data Pipeline...")
 
     # ==========================================
     # 1. DOWNLOAD THE RAW DATA
     # ==========================================
-    SHEET_ID = '1snki1i6rpKpVjOpk22WbUd6brh3ZSl71p6Hy-uh5mPE' 
-    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet1'
+    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE' 
+    # Switched back to direct export URL to prevent gviz HTML corruption
+    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv'
     
     try:
         df = pd.read_csv(url)
@@ -21,6 +22,9 @@ def run_pipeline():
     except Exception as e:
         print(f"❌ Failed to download raw data: {e}")
         return
+
+    # 🚨 FIX 1: Strip invisible spaces from column headers so Python can actually find them!
+    df.columns = df.columns.str.strip()
 
     # ==========================================
     # 2. DATA CLEANING & PREPARATION
@@ -67,22 +71,20 @@ def run_pipeline():
     else:
         df['Churn Risk Score'] = 50
 
-    # 🚨 BULLETPROOF SERVICE BUNDLE COUNT
-    service_cols = [
+    # 🚨 FIX 2: FORCE SERVICE BUNDLE COUNT
+    # Create the column explicitly first so it cannot be skipped
+    df['Service Bundle Count'] = 0
+    
+    premium_services = [
         'Online Security', 'Online Backup', 'Device Protection Plan', 
         'Premium Tech Support', 'Streaming TV', 'Streaming Movies', 'Streaming Music'
     ]
-    available_services = [col for col in service_cols if col in df.columns]
     
-    if available_services:
-        # Create the column explicitly to guarantee it exists
-        df['Service Bundle Count'] = 0
-        for col in available_services:
-            # Count any positive indicator ('Yes', '1', etc.) securely
-            is_active = df[col].astype(str).str.strip().str.lower().isin(['yes', '1', '1.0', 'true'])
+    for service in premium_services:
+        if service in df.columns:
+            # Check for ANY positive indicator and add it to the count
+            is_active = df[service].astype(str).str.strip().str.lower().isin(['yes', '1', '1.0', 'true'])
             df['Service Bundle Count'] += np.where(is_active, 1, 0)
-    else:
-        df['Service Bundle Count'] = 0
 
     # ==========================================
     # 5. RANKED CUSTOMER SEGMENTATION
@@ -114,23 +116,28 @@ def run_pipeline():
     df.loc[upsell_indices, 'Customer Value Segment'] = 'Upsell opportunity'
 
     # ==========================================
-    # 6. FINAL CLEANUP & UPLOAD (CRASH-PROOF)
+    # 6. FINAL CLEANUP & UPLOAD (THE NUKE OPTION)
     # ==========================================
-    # 1. Remove phantom 'Unnamed' columns safely
+    print("🧹 Running strict blank-cell cleanup...")
+    
+    # Remove phantom 'Unnamed' columns
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     
-    # 2. Convert all strictly string columns to replace invisible spaces and blanks
-    for col in df.columns:
-        if df[col].dtype == object:
-            # Safe regex replacement without inplace to prevent memory crashes
-            df[col] = df[col].replace(r'^\s*$', 'N/A', regex=True)
-            
-    # 3. Fill any mathematical NaNs with 'N/A' globally
+    # 🚨 FIX 3: THE NUKE OPTION FOR BLANKS
+    # 1. Replace cells containing ONLY spaces with standard NaN
+    df = df.replace(r'^\s*$', np.nan, regex=True)
+    
+    # 2. Force fill standard NaNs with 'N/A'
     df = df.fillna('N/A')
+    
+    # 3. Replace string artifacts ('nan', 'NaN', 'None') that Pandas leaves behind with 'N/A'
+    df = df.replace(['nan', 'NaN', 'None', '<NA>'], 'N/A')
 
-    # 4. Save using na_rep to physically guarantee no blank commas in the CSV
+    # Double-check that the column made it to the final stage
+    print(f"📊 DEBUG: First 3 rows of Service Bundle Count:\n{df['Service Bundle Count'].head(3)}")
+
     output_filename = 'Model_Ready_Data.csv'
-    df.to_csv(output_filename, index=False, na_rep='N/A')
+    df.to_csv(output_filename, index=False)
     
     TARGET_FILE_ID = '1m7RHqafoVen_AKSXSKm69lituXBGj2XcD96gR-w63-E'
 
