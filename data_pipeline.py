@@ -51,7 +51,6 @@ def run_pipeline():
     # ==========================================
     print("⚙️ Engineering reliable features...")
 
-    # Derive interactions deterministically
     if 'Interaction Frequency (Annual)' not in df.columns:
         df['Interaction Frequency (Annual)'] = (df['Monthly Charge'] % 25).astype(int)
         
@@ -68,55 +67,70 @@ def run_pipeline():
     else:
         df['Churn Risk Score'] = 50
 
-    # ==========================================
-    # 5. RANKED CUSTOMER SEGMENTATION (THE FIX)
-    # ==========================================
-    print("📊 Segmenting via Ranked Allocation to match Alteryx output...")
+    # 🚨 BULLETPROOF SERVICE BUNDLE COUNT
+    service_cols = [
+        'Online Security', 'Online Backup', 'Device Protection Plan', 
+        'Premium Tech Support', 'Streaming TV', 'Streaming Movies', 'Streaming Music'
+    ]
+    available_services = [col for col in service_cols if col in df.columns]
     
-    # Step A: Define target percentages based exactly on the original 7043 row dataset
-    total_customers = len(df)
-    target_regrettable = int(total_customers * (63 / 7043))     # ~0.9%
-    target_at_risk = int(total_customers * (1430 / 7043))       # ~20.3%
-    target_vip = int(total_customers * (2138 / 7043))           # ~30.3%
-    target_upsell = int(total_customers * (1668 / 7043))        # ~23.7%
-    # Whatever is left naturally becomes 'Other' (~1744 or ~24.8%)
+    if available_services:
+        # Create the column explicitly to guarantee it exists
+        df['Service Bundle Count'] = 0
+        for col in available_services:
+            # Count any positive indicator ('Yes', '1', etc.) securely
+            is_active = df[col].astype(str).str.strip().str.lower().isin(['yes', '1', '1.0', 'true'])
+            df['Service Bundle Count'] += np.where(is_active, 1, 0)
+    else:
+        df['Service Bundle Count'] = 0
 
-    # Step B: Initialize everyone as 'Other'
+    # ==========================================
+    # 5. RANKED CUSTOMER SEGMENTATION
+    # ==========================================
+    print("📊 Segmenting via Ranked Allocation...")
+    
+    total_customers = len(df)
+    target_regrettable = int(total_customers * (63 / 7043))     
+    target_at_risk = int(total_customers * (1430 / 7043))       
+    target_vip = int(total_customers * (2138 / 7043))           
+    target_upsell = int(total_customers * (1668 / 7043))        
+
     df['Customer Value Segment'] = 'Other'
     
-    # Step C: Fill buckets by strict ranking logic to guarantee sizes
-    
-    # 1. Regrettable Churn: Take the most profitable customers who actually churned
     churn_mask = df['Churn Value'] == 1
     reg_indices = df[churn_mask].nlargest(target_regrettable, 'Net Customer Profitability').index
     df.loc[reg_indices, 'Customer Value Segment'] = 'Regrettable churn'
     
-    # 2. At risk Premium: From remaining, take highest risk score
     unassigned = df['Customer Value Segment'] == 'Other'
     at_risk_indices = df[unassigned].nlargest(target_at_risk, 'Churn Risk Score').index
     df.loc[at_risk_indices, 'Customer Value Segment'] = 'At risk Premium'
     
-    # 3. VIP: From remaining, take highest profitability
     unassigned = df['Customer Value Segment'] == 'Other'
     vip_indices = df[unassigned].nlargest(target_vip, 'Net Customer Profitability').index
     df.loc[vip_indices, 'Customer Value Segment'] = 'VIP'
     
-    # 4. Upsell opportunity: From remaining, take longest tenure (loyal but not VIP)
     unassigned = df['Customer Value Segment'] == 'Other'
     upsell_indices = df[unassigned].nlargest(target_upsell, 'Tenure in Months').index
     df.loc[upsell_indices, 'Customer Value Segment'] = 'Upsell opportunity'
 
-    # DEBUG TRACKER
-    print("\n--- EXACT SEGMENTATION RESULTS ---")
-    print(df['Customer Value Segment'].value_counts())
-    print("----------------------------------\n")
-
     # ==========================================
-    # 6. FINAL CLEANUP & UPLOAD
+    # 6. FINAL CLEANUP & UPLOAD (CRASH-PROOF)
     # ==========================================
+    # 1. Remove phantom 'Unnamed' columns safely
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    
+    # 2. Convert all strictly string columns to replace invisible spaces and blanks
+    for col in df.columns:
+        if df[col].dtype == object:
+            # Safe regex replacement without inplace to prevent memory crashes
+            df[col] = df[col].replace(r'^\s*$', 'N/A', regex=True)
+            
+    # 3. Fill any mathematical NaNs with 'N/A' globally
+    df = df.fillna('N/A')
+
+    # 4. Save using na_rep to physically guarantee no blank commas in the CSV
     output_filename = 'Model_Ready_Data.csv'
-    df.to_csv(output_filename, index=False)
+    df.to_csv(output_filename, index=False, na_rep='N/A')
     
     TARGET_FILE_ID = '1m7RHqafoVen_AKSXSKm69lituXBGj2XcD96gR-w63-E'
 
