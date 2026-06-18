@@ -1,158 +1,98 @@
+import streamlit as st
 import pandas as pd
-import numpy as np
-import os
-import json
-import sys
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+import joblib
 
-def run_pipeline():
-    print("🚀 Starting Pipeline...")
+st.set_page_config(page_title="Churn Predictor Pro", layout="wide")
+st.title("DataPulse: Advanced Churn Predictor 📊")
 
-    # ==========================================
-    # 1. DOWNLOAD THE RAW DATA
-    # ==========================================
-    SHEET_ID = 'YOUR_RAW_SHEET_ID_HERE' 
-    url = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv'
+@st.cache_resource 
+def load_model():
+    model = joblib.load('telecom_rf_model_lite.pkl')
+    features = joblib.load('model_features_lite.pkl')
+    return model, features
+
+rf_model, model_features = load_model()
+
+st.sidebar.title("Customer Configuration")
+
+# --- SECTION 1: DEMOGRAPHICS ---
+with st.sidebar.expander("👤 Demographics & Account", expanded=True):
+    age = st.slider("Age", 18, 90, 45)
+    senior = st.selectbox("Senior Citizen", ["No", "Yes"])
+    dependents = st.number_input("Number of Dependents", 0, 5, 0)
+    referrals = st.slider("Number of Referrals", 0, 10, 0)
+
+# --- SECTION 2: CONTRACT & BILLING ---
+with st.sidebar.expander("💳 Contract & Billing", expanded=True):
+    contract = st.selectbox("Contract Type", ["Month-to-Month", "One Year", "Two Year"])
+    tenure = st.slider("Tenure in Months", 1, 72, 12)
+    monthly_charge = st.number_input("Monthly Charge ($)", min_value=10.0, max_value=200.0, value=85.0)
+    paperless = st.selectbox("Paperless Billing", ["Yes", "No"])
+
+# --- SECTION 3: SERVICES & USAGE ---
+with st.sidebar.expander("🌐 Services & Usage", expanded=False):
+    internet = st.selectbox("Internet Service", ["Fiber Optic", "DSL", "None"])
+    gb_download = st.slider("Avg Monthly GB Download", 0, 100, 20)
+    bundle_count = st.slider("Service Bundle Count", 0, 4, 2)
+    tech_support = st.selectbox("Premium Tech Support", ["Yes", "No"])
+    online_security = st.selectbox("Online Security", ["Yes", "No"])
+
+# --- SECTION 4: BEHAVIOR & SENTIMENT ---
+with st.sidebar.expander("😡 Behavior & Sentiment", expanded=True):
+    satisfaction = st.slider("Satisfaction Score (1-5)", 1, 5, 3)
+    engagement = st.slider("Engagement Score", 0.0, 1.0, 0.5)
+    refund_rate = st.slider("Refund Rate (%)", 0.0, 100.0, 0.0)
+    interaction_freq = st.slider("Interaction Frequency (Annual)", 0, 30, 2)
+
+if st.button("Predict Churn Risk", type="primary", use_container_width=True):
     
-    try:
-        df = pd.read_csv(url)
-        print(f"✅ Successfully downloaded {len(df)} rows.")
-    except Exception as e:
-        print(f"❌ Failed to download raw data: {e}")
-        sys.exit(1)
-
-    df.columns = df.columns.str.strip()
-
-    # ==========================================
-    # 2. DATA CLEANING & PREPARATION
-    # ==========================================
-    financial_cols = ['Monthly Charge', 'Total Charges', 'Total Refunds', 'Total Revenue']
-    for col in financial_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
-    if 'Tenure in Months' in df.columns:
-        df['Tenure in Months'] = pd.to_numeric(df['Tenure in Months'], errors='coerce').fillna(1)
-        df['Tenure in Months'] = np.maximum(1, df['Tenure in Months'])
-
-    # ==========================================
-    # 3. CHURN IDENTIFICATION
-    # ==========================================
-    if 'Customer Status' in df.columns:
-        clean_status = df['Customer Status'].astype(str).str.strip().str.lower()
-        df['Churn Value'] = np.where(clean_status == 'churned', 1, 0)
-    elif 'Churn Label' in df.columns:
-        clean_label = df['Churn Label'].astype(str).str.strip().str.lower()
-        df['Churn Value'] = np.where(clean_label.isin(['yes', '1', 'true', 'y']), 1, 0)
-    else:
-        df['Churn Value'] = 0
-
-    # ==========================================
-    # 4. DETERMINISTIC FEATURE ENGINEERING
-    # ==========================================
-    if 'Interaction Frequency (Annual)' not in df.columns:
-        df['Interaction Frequency (Annual)'] = (df['Monthly Charge'] % 25).astype(int)
+    # Map all inputs to match the EXACT column names from the dataset
+    input_data = {
+        'Age': [age],
+        'Senior Citizen': [1 if senior == "Yes" else 0],
+        'Number of Dependents': [dependents],
+        'Number of Referrals': [referrals],
+        'Contract': [contract],
+        'Tenure in Months': [tenure],
+        'Monthly Charge': [monthly_charge],
+        'Paperless Billing': [1 if paperless == "Yes" else 0],
+        'Internet Type': [internet],
+        'Avg Monthly GB Download': [gb_download],
+        'Service Bundle Count': [bundle_count],
+        'Premium Tech Support': [1 if tech_support == "Yes" else 0],
+        'Online Security': [1 if online_security == "Yes" else 0],
+        'Satisfaction Score': [satisfaction],
+        'Engagement Score': [engagement],
+        'Refund Rate (%)': [refund_rate],
+        'Interaction Frequency (Annual)': [interaction_freq],
+        # Auto-calculating a logical velocity based on frequency and tenure
+        'Interaction Velocity': [interaction_freq / max(1, (tenure/12))] 
+    }
+    
+    input_df = pd.DataFrame(input_data)
+    
+    # One-Hot Encode and align with the training columns
+    encoded_input = pd.get_dummies(input_df)
+    encoded_input = encoded_input.reindex(columns=model_features, fill_value=0)
+    
+    # Predict
+    prediction = rf_model.predict_proba(encoded_input)
+    churn_risk = prediction[0][1] * 100
+    
+    # Display Results
+    st.divider()
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.metric(label="Predicted Churn Probability", value=f"{churn_risk:.1f}%")
         
-    df['Interaction Velocity (Per Month)'] = df['Interaction Frequency (Annual)'] / 12.0
-    df['Estimated Lifetime Interactions'] = df['Interaction Velocity (Per Month)'] * df['Tenure in Months']
-    df['Estimated Cost-to-Serve'] = df['Estimated Lifetime Interactions'] * 15.0 
-    df['Net Customer Profitability'] = df['Total Revenue'] - df['Total Refunds'] - df['Estimated Cost-to-Serve']
-
-    if 'Contract' in df.columns:
-        base_risk = np.where(df['Contract'] == 'Month-to-Month', 60, np.where(df['Contract'] == 'One Year', 30, 10))
-        tenure_penalty = np.maximum(0, (24 - df['Tenure in Months'])) * 1.5
-        stable_variation = (df['Tenure in Months'] % 10) - 5
-        df['Churn Risk Score'] = np.clip(base_risk + tenure_penalty + stable_variation, 1, 99)
-    else:
-        df['Churn Risk Score'] = 50
-
-    # 🚨 FORCE SERVICE BUNDLE COUNT
-    df['Service Bundle Count'] = 0
-    premium_services = [
-        'Online Security', 'Online Backup', 'Device Protection Plan', 
-        'Premium Tech Support', 'Streaming TV', 'Streaming Movies', 'Streaming Music'
-    ]
-    for service in premium_services:
-        if service in df.columns:
-            is_active = df[service].astype(str).str.strip().str.lower().isin(['yes', '1', '1.0', 'true'])
-            df['Service Bundle Count'] += np.where(is_active, 1, 0)
-
-    # ==========================================
-    # 5. RANKED CUSTOMER SEGMENTATION
-    # ==========================================
-    total_customers = len(df)
-    target_regrettable = int(total_customers * (63 / 7043))     
-    target_at_risk = int(total_customers * (1430 / 7043))       
-    target_vip = int(total_customers * (2138 / 7043))           
-    target_upsell = int(total_customers * (1668 / 7043))        
-
-    df['Customer Value Segment'] = 'Other'
-    
-    churn_mask = df['Churn Value'] == 1
-    reg_indices = df[churn_mask].nlargest(target_regrettable, 'Net Customer Profitability').index
-    df.loc[reg_indices, 'Customer Value Segment'] = 'Regrettable churn'
-    
-    unassigned = df['Customer Value Segment'] == 'Other'
-    at_risk_indices = df[unassigned].nlargest(target_at_risk, 'Churn Risk Score').index
-    df.loc[at_risk_indices, 'Customer Value Segment'] = 'At risk Premium'
-    
-    unassigned = df['Customer Value Segment'] == 'Other'
-    vip_indices = df[unassigned].nlargest(target_vip, 'Net Customer Profitability').index
-    df.loc[vip_indices, 'Customer Value Segment'] = 'VIP'
-    
-    unassigned = df['Customer Value Segment'] == 'Other'
-    upsell_indices = df[unassigned].nlargest(target_upsell, 'Tenure in Months').index
-    df.loc[upsell_indices, 'Customer Value Segment'] = 'Upsell opportunity'
-
-    # ==========================================
-    # 6. FINAL CLEANUP & UPLOAD (CRASH-PROOF)
-    # ==========================================
-    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-    
-    # Safe, non-regex text cleanup
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            # Force everything to string, strip spaces, and replace blanks
-            df[col] = df[col].astype(str).str.strip()
-            df[col] = df[col].replace(['', 'nan', 'NaN', 'None', '<NA>'], 'Unknown')
-    
-    # Fill remaining numerical NaNs
-    df = df.fillna('Unknown')
-
-    # Verification Step
-    if 'Service Bundle Count' in df.columns:
-        print(f"✅ VERIFIED: Service Bundle Count is ready to export. Sample: {df['Service Bundle Count'].tolist()[:5]}")
-
-    # Create a BRAND NEW file to bypass Google Sheets caching
-    output_filename = 'Model_Ready_Data_FINAL.csv'
-    df.to_csv(output_filename, index=False)
-    
-    try:
-        creds_json = os.environ.get('GCP_CREDENTIALS')
-        if not creds_json:
-            raise ValueError("GCP_CREDENTIALS missing!")
-            
-        creds_dict = json.loads(creds_json)
-        credentials = service_account.Credentials.from_service_account_info(
-            creds_dict, scopes=['https://www.googleapis.com/auth/drive']
-        )
-        service = build('drive', 'v3', credentials=credentials)
-        media = MediaFileUpload(output_filename, mimetype='text/csv', resumable=True)
-
-        # Upload as a new file
-        file_metadata = {'name': 'Model_Ready_Data_FINAL.csv'}
-        new_file = service.files().create(
-            body=file_metadata, 
-            media_body=media,
-            fields='id'
-        ).execute()
-        
-        print(f"✅ SUCCESS! Created new file: Model_Ready_Data_FINAL.csv (ID: {new_file.get('id')})")
-    except Exception as e:
-        print(f"❌ Failed to upload to Google Drive: {e}")
-        sys.exit(1) 
-
-if __name__ == '__main__':
-    run_pipeline()
+    with col2:
+        if churn_risk >= 50:
+            st.error("🚨 **High Risk Customer** - Immediate Action Required")
+            st.caption("Suggested Action: Route to Retention Team & Offer Promotional Discount.")
+        elif churn_risk >= 25:
+            st.warning("⚠️ **Medium Risk Customer** - Monitor Closely")
+            st.caption("Suggested Action: Send Satisfaction Survey & Highlight Unused Features.")
+        else:
+            st.success("✅ **Low Risk Customer** - Safe")
+            st.caption("Suggested Action: Routine Marketing & Upsell Opportunities.")
