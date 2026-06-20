@@ -82,7 +82,7 @@ if st.button("Predict Churn Risk", type="primary", use_container_width=True):
         st.metric(label="Predicted Churn Probability", value=f"{churn_risk:.1f}%")
         
     with col2:
-        if churn_risk >= 55:
+        if churn_risk >= 50:
             st.error("🚨 **High Risk Customer** - Immediate Action Required")
             st.caption("Suggested Action: Route to Retention Team & Offer Promotional Discount.")
         elif churn_risk >= 35:
