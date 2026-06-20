@@ -7,8 +7,9 @@ st.title("DataPulse: Churn Predictor 📊")
 
 @st.cache_resource 
 def load_model():
-    model = joblib.load('telecom_rf_model_lite.pkl')
-    features = joblib.load('model_features_lite.pkl')
+    # 🚨 Updated to load the newly exported files!
+    model = joblib.load('churn_rf_model.pkl')
+    features = joblib.load('model_features.pkl')
     return model, features
 
 rf_model, model_features = load_model()
@@ -28,6 +29,8 @@ with st.sidebar.expander("💳 Contract & Billing", expanded=True):
     tenure = st.slider("Tenure in Months", 1, 72, 12)
     monthly_charge = st.number_input("Monthly Charge ($)", min_value=10.0, max_value=200.0, value=85.0)
     paperless = st.selectbox("Paperless Billing", ["Yes", "No"])
+    # Moved Refund Rate here since the Behavior section was removed
+    refund_rate = st.slider("Refund Rate (%)", 0.0, 100.0, 0.0)
 
 # --- SECTION 3: SERVICES & USAGE ---
 with st.sidebar.expander("🌐 Services & Usage", expanded=False):
@@ -37,12 +40,8 @@ with st.sidebar.expander("🌐 Services & Usage", expanded=False):
     tech_support = st.selectbox("Premium Tech Support", ["Yes", "No"])
     online_security = st.selectbox("Online Security", ["Yes", "No"])
 
-# --- SECTION 4: BEHAVIOR & SENTIMENT ---
-with st.sidebar.expander("😡 Behavior & Sentiment", expanded=True):
-    satisfaction = st.slider("Satisfaction Score (1-5)", 1, 5, 3)
-    engagement = st.slider("Engagement Score", 0.0, 1.0, 0.5)
-    refund_rate = st.slider("Refund Rate (%)", 0.0, 100.0, 0.0)
-    interaction_freq = st.slider("Interaction Frequency (Annual)", 0, 30, 2)
+# Note: Behavior & Sentiment section removed because Satisfaction, Engagement, 
+# and Interaction metrics were dropped from the model to prevent data leakage!
 
 if st.button("Predict Churn Risk", type="primary", use_container_width=True):
     
@@ -61,12 +60,8 @@ if st.button("Predict Churn Risk", type="primary", use_container_width=True):
         'Service Bundle Count': [bundle_count],
         'Premium Tech Support': [1 if tech_support == "Yes" else 0],
         'Online Security': [1 if online_security == "Yes" else 0],
-        'Satisfaction Score': [satisfaction],
-        'Engagement Score': [engagement],
-        'Refund Rate (%)': [refund_rate],
-        'Interaction Frequency (Annual)': [interaction_freq],
-        # Auto-calculating a logical velocity based on frequency and tenure
-        'Interaction Velocity': [interaction_freq / max(1, (tenure/12))] 
+        'Refund Rate (%)': [refund_rate]
+        # Satisfaction, Engagement, and Interaction metrics safely removed
     }
     
     input_df = pd.DataFrame(input_data)
