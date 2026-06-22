@@ -91,3 +91,24 @@ if st.button("Predict Churn Risk", type="primary", use_container_width=True):
         else:
             st.success("✅ **Low Risk Customer** - Safe")
             st.caption("Suggested Action: Routine Marketing & Upsell Opportunities.")
+            
+import streamlit.components.v1 as components
+
+st.divider()
+st.subheader("Business ROI & Confusion Matrix Calculator")
+st.write("Adjust the numbers below based on the latest model training run to see the projected business value.")
+
+# Paste the entire HTML code inside this triple-quote string
+html_calculator = """
+<!DOCTYPE html>
+<html>
+<head>
+    </head>
+<body>
+    ...
+</body>
+</html>
+"""
+
+# This renders the interactive HTML right inside your Streamlit app!
+components.html(html_calculator, height=750, scrolling=True)
